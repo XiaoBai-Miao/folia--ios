@@ -35,15 +35,19 @@ jobs:
         run: |
           cp inject/qishui-direct.js folia/dist/qishui-direct.js
           cp inject/native-http.js folia/dist/native-http.js
+          cp inject/keep-audio-alive.js folia/dist/keep-audio-alive.js
           python3 - <<'PY'
           import re
           p = 'folia/dist/index.html'
           s = open(p, encoding='utf-8').read()
-          tags = '<script src="/qishui-direct.js"></script>\n    <script src="/native-http.js"></script>\n  '
+          tags = ('<script src="/keep-audio-alive.js"></script>\n    '
+                  '<script src="/qishui-direct.js"></script>\n    '
+                  '<script src="/native-http.js"></script>\n  ')
           if 'qishui-direct.js' not in s:
               s = s.replace('<head>', '<head>\n    ' + tags, 1)
               open(p, 'w', encoding='utf-8').write(s)
-          print('index.html injected:', 'qishui-direct.js' in open(p, encoding='utf-8').read())
+          cur = open(p, encoding='utf-8').read()
+          print('index.html injected:', 'qishui-direct.js' in cur, '| keep-audio:', 'keep-audio-alive.js' in cur)
           PY
 
       - name: Create Capacitor iOS shell
