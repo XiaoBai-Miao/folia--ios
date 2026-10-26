@@ -89,6 +89,11 @@ jobs:
           print('capacitor.js 已注入:', 'capacitor.js' in s2)
           print('顺序检查:', s2.find('capacitor.js') < s2.find('qishui-direct.js'))
           PY
+          # 关键：改完 www 必须重新同步到 ios 工程，否则不会进 IPA
+          npx cap copy ios
+          echo '--- 同步后的 ios 目录 ---'
+          ls -l ios/App/App/public/capacitor.js
+          grep -o 'capacitor.js' ios/App/App/public/index.html | head -2
 
       - name: Patch Info.plist
         run: |
