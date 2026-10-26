@@ -95,6 +95,14 @@ jobs:
           ls -l ios/App/App/public/capacitor.js
           grep -o 'capacitor.js' ios/App/App/public/index.html | head -2
 
+      - name: Patch AppDelegate (background audio)
+        run: |
+          cd shell
+          ls ios/App/App/
+          python3 ../inject/patch-appdelegate.py ios/App/App
+          echo '--- 结果 ---'
+          grep -n "AVAudioSession" ios/App/App/AppDelegate.swift | head -5
+
       - name: Patch Info.plist
         run: |
           P=shell/ios/App/App/Info.plist
