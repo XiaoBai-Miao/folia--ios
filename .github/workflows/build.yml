@@ -1,0 +1,112 @@
+name: Build Folia iOS (Direct-Connect)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build Folia web (dist)
+        run: |
+          git clone --depth 1 https://github.com/chthollyphile/folia-major.git folia
+          cd folia
+          npm ci || npm install
+          npm run build
+          test -d dist || { echo "dist not found"; ls; exit 1; }
+          du -sh dist
+
+      - name: Patch qishui provider (Electron IPC -> direct module)
+        run: python3 inject/patch-provider.py folia/dist
+
+      - name: Inject direct-connect modules
+        run: |
+          cp inject/qishui-direct.js folia/dist/qishui-direct.js
+          cp inject/native-http.js folia/dist/native-http.js
+          python3 - <<'PY'
+          import re
+          p = 'folia/dist/index.html'
+          s = open(p, encoding='utf-8').read()
+          tags = '<script src="/qishui-direct.js"></script>\n    <script src="/native-http.js"></script>\n  '
+          if 'qishui-direct.js' not in s:
+              s = s.replace('<head>', '<head>\n    ' + tags, 1)
+              open(p, 'w', encoding='utf-8').write(s)
+          print('index.html injected:', 'qishui-direct.js' in open(p, encoding='utf-8').read())
+          PY
+
+      - name: Create Capacitor iOS shell
+        run: |
+          mkdir shell && cd shell
+          npm init -y >/dev/null
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/ios@6
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "top.izuna.foliamajor",
+            "appName": "Folia",
+            "webDir": "www",
+            "ios": { "contentInset": "never", "backgroundColor": "#09090b" },
+            "plugins": { "CapacitorHttp": { "enabled": true } }
+          }
+          EOF
+          mkdir -p www
+          cp -R ../folia/dist/* www/
+          npx cap add ios
+          npx cap sync ios
+
+      - name: Patch Info.plist
+        run: |
+          P=shell/ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$P" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" "$P" 2>/dev/null || true
+
+      - name: Archive (unsigned)
+        run: |
+          cd shell/ios/App
+          ARGS="-configuration Release -destination generic/platform=iOS -archivePath ../../../build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="
+          if [ -d App.xcworkspace ]; then
+            xcodebuild -workspace App.xcworkspace -scheme App $ARGS 2>&1 | tail -50
+          else
+            xcodebuild -project App.xcodeproj -scheme App -resolvePackageDependencies || true
+            xcodebuild -project App.xcodeproj -scheme App $ARGS 2>&1 | tail -50
+          fi
+          test -d ../../../build/App.xcarchive/Products/Applications/App.app
+
+      - name: Assemble IPA
+        run: |
+          brew install ldid
+          rm -rf Payload && mkdir Payload
+          cp -R build/App.xcarchive/Products/Applications/App.app Payload/Folia.app
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" Payload/Folia.app/Info.plist
+          ldid -S Payload/Folia.app/App
+          zip -qry folia-ios-direct.ipa Payload
+          ls -lh folia-ios-direct.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: folia-ios-direct
+          path: folia-ios-direct.ipa
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=direct.$(date +%m%d%H%M)
+          gh release create "$VER" folia-ios-direct.ipa \
+            --title "Folia iOS Direct $VER" \
+            --notes "汽水直连版（WebCrypto + CapacitorHttp），无需中转服务器。" || true
