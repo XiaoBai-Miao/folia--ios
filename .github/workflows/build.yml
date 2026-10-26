@@ -65,6 +65,31 @@ jobs:
           npx cap add ios
           npx cap sync ios
 
+      - name: Inject Capacitor runtime into web bundle
+        run: |
+          cd shell
+          # @capacitor/core 的浏览器 UMD 运行时
+          ls node_modules/@capacitor/core/dist/ || true
+          if [ -f node_modules/@capacitor/core/dist/capacitor.js ]; then
+            cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
+            echo "已拷贝 capacitor.js (UMD)"
+          else
+            echo "WARN: capacitor.js 未找到，尝试 index.js"
+            cp node_modules/@capacitor/core/dist/index.js www/capacitor.js 2>/dev/null || echo "FAIL"
+          fi
+          ls -lh www/capacitor.js
+          python3 - <<'PY'
+          p = 'www/index.html'
+          s = open(p, encoding='utf-8').read()
+          tag = '<script src="/capacitor.js"></script>\n    '
+          if 'capacitor.js' not in s:
+              s = s.replace('<head>', '<head>\n    ' + tag, 1)
+              open(p, 'w', encoding='utf-8').write(s)
+          s2 = open(p, encoding='utf-8').read()
+          print('capacitor.js 已注入:', 'capacitor.js' in s2)
+          print('顺序检查:', s2.find('capacitor.js') < s2.find('qishui-direct.js'))
+          PY
+
       - name: Patch Info.plist
         run: |
           P=shell/ios/App/App/Info.plist
