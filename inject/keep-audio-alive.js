@@ -12,13 +12,6 @@
   }
 
   // 包装构造函数，记录所有 AudioContext 实例
-  function WrappedAC() {
-    var ctx = new OrigAC(arguments[0]);
-    return track(ctx);
-  }
-  WrappedAC.prototype = OrigAC.prototype;
-  window.AudioContext = WrappedAC;
-  if (window.webkitAudioContext) window.webkitAudioContext = WrappedAC;
 
   // 页面里已存在的实例（如果先于本脚本创建）
   try {
@@ -49,25 +42,36 @@
   // 定时兜底：每 2 秒检查一次（后台时定时器可能被限流，但仍会跑）
   setInterval(function () { resumeAll('interval'); }, 2000);
 
-  // 静音音频保活：iOS 需要一个持续播放的音频元素来维持后台
-  function keepAlive() {
+  // 静音保活：在【已有的】AudioContext 里加静音节点
+  // 不新建 AudioContext，避免抢走 mediaSession 的音频源（否则锁屏播放器会消失）
+  function attachSilentNode(ctx) {
     try {
-      if (window.__keepAliveAudio) return;
-      var silent = new OrigAC();
-      var osc = silent.createOscillator();
-      var gain = silent.createGain();
-      gain.gain.value = 0.0001;
+      if (!ctx || ctx.__keepAliveAttached) return;
+      ctx.__keepAliveAttached = true;
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      gain.gain.value = 0.00005;   // 近乎无声
+      osc.frequency.value = 20;     // 极低频，人耳听不到
       osc.connect(gain);
-      gain.connect(silent.destination);
+      gain.connect(ctx.destination);
       osc.start();
-      window.__keepAliveAudio = { ctx: silent, osc: osc };
-      track(silent);
-      console.log('[keep-audio] silent oscillator started');
+      console.log('[keep-audio] silent node attached to existing context');
     } catch (e) {
-      console.warn('[keep-audio] keepAlive failed:', e && e.message);
+      console.warn('[keep-audio] attach silent node failed:', e && e.message);
     }
   }
-  keepAlive();
+
+  // 包装构造函数：创建时记录，并在用户首次交互后附加静音节点
+  function WrappedAC2() {
+    var ctx = new OrigAC(arguments[0]);
+    track(ctx);
+    // 延迟附加，等 Folia 建好图之后再挂
+    setTimeout(function () { attachSilentNode(ctx); }, 1500);
+    return ctx;
+  }
+  WrappedAC2.prototype = OrigAC.prototype;
+  window.AudioContext = WrappedAC2;
+  if (window.webkitAudioContext) window.webkitAudioContext = WrappedAC2;
 
   console.log('[keep-audio] installed, contexts tracked');
 })();
