@@ -1,78 +1,82 @@
 #!/usr/bin/env python3
 """把 Folia 前端的汽水 provider 从 Electron IPC 改成直连模块。
-   兼容不同的 chunk 命名（providerRegistry-*.js / registry-*.js 等）"""
-import glob, sys, os, re
+   策略：遍历所有 chunk，找含 window.electron.qishuiRequest 的那个"""
+import glob, sys, os
 
-def find_target(dist):
+def find_targets(dist):
     assets = os.path.join(dist, 'assets')
-    patterns = [
-        'providerRegistry-*.js',
-        'registry-*.js',
-        'provider*.js',
-    ]
-    for pat in patterns:
-        hits = glob.glob(os.path.join(assets, pat))
-        for h in hits:
-            try:
-                s = open(h, encoding='utf-8').read()
-            except Exception:
-                continue
-            # 必须同时包含汽水标识和 Electron 调用
-            if 'qishui' in s.lower() and ('electron' in s or 'Qishui' in s):
-                return h, s
-    return None, None
+    hits = []
+    for f in glob.glob(os.path.join(assets, '*.js')):
+        try:
+            s = open(f, encoding='utf-8').read()
+        except Exception:
+            continue
+        if 'window.electron.qishuiRequest' in s or 'electron?.qishuiRequest' in s:
+            hits.append((f, s))
+    return hits
 
 def main(dist):
-    p, s = find_target(dist)
-    if not p:
-        print('ERROR: 找不到包含 qishui 的 chunk')
-        # 列出候选帮助排查
+    hits = find_targets(dist)
+    if not hits:
+        print('ERROR: 没有 chunk 包含 window.electron.qishuiRequest')
+        # 列出含 qishui 的文件帮助排查
         for f in sorted(glob.glob(os.path.join(dist, 'assets', '*.js'))):
             try:
                 t = open(f, encoding='utf-8').read()
                 if 'qishui' in t.lower():
-                    print('  候选:', os.path.basename(f), len(t), 'bytes')
+                    print('  含 qishui:', os.path.basename(f), len(t), 'bytes',
+                          '| 有 electron.qishuiRequest:', 'electron.qishuiRequest' in t)
             except Exception:
                 pass
         sys.exit(1)
 
-    print('target:', os.path.basename(p), len(s), 'bytes')
-    changed = 0
+    total_changed = 0
+    for p, s in hits:
+        print('target:', os.path.basename(p), len(s), 'bytes')
+        changed = 0
 
-    # 1) 可用性判定
-    patterns_qx = [
-        "typeof window.electron?.qishuiRequest==`function`",
-        "typeof window.electron?.qishuiRequest==='function'",
-        'typeof window.electron?.qishuiRequest==="function"',
-        "typeof window.electron?.qishuiRequest == `function`",
-    ]
-    for old in patterns_qx:
-        if old in s:
-            s = s.replace(old, "typeof window.__qishuiDirect==`function`", 1)
+        # 1) 可用性判定
+        for old in [
+            "typeof window.electron?.qishuiRequest==`function`",
+            "typeof window.electron?.qishuiRequest==='function'",
+            'typeof window.electron?.qishuiRequest==="function"',
+        ]:
+            if old in s:
+                s = s.replace(old, "typeof window.__qishuiDirect==`function`", 1)
+                changed += 1
+                print('  patched qx check')
+                break
+
+        # 2) 调用点
+        if 'await window.electron.qishuiRequest(e,t)' in s:
+            s = s.replace('await window.electron.qishuiRequest(e,t)',
+                          'await window.__qishuiDirect(e,t)', 1)
             changed += 1
-            print('  patched qx check')
-            break
-
-    # 2) 调用点
-    for old in ["await window.electron.qishuiRequest(e,t)",
-                "await window.electron.qishuiRequest("]:
-        if old in s:
-            if old.endswith("(e,t)"):
-                s = s.replace(old, "await window.__qishuiDirect(e,t)", 1)
-            else:
-                s = s.replace(old, "await window.__qishuiDirect(", 1)
+            print('  patched call site (e,t)')
+        elif 'await window.electron.qishuiRequest(' in s:
+            s = s.replace('await window.electron.qishuiRequest(',
+                          'await window.__qishuiDirect(', 1)
             changed += 1
             print('  patched call site')
-            break
 
-    open(p, 'w', encoding='utf-8').write(s)
-    print(f'patched {os.path.basename(p)}: {changed} 处')
+        if changed:
+            open(p, 'w', encoding='utf-8').write(s)
+            print(f'  patched: {changed} 处')
+            total_changed += changed
 
-    s2 = open(p, encoding='utf-8').read()
-    print('  判定已改:', '__qishuiDirect' in s2)
-    print('  仍引用 electron.qishuiRequest:', 'window.electron.qishuiRequest' in s2)
-    if changed < 2:
-        print('WARN: 补丁未完全命中，需要人工检查')
+    print(f'总命中文件 {len(hits)} 个，总改动 {total_changed} 处')
+
+    # 自检
+    remain = 0
+    for f in glob.glob(os.path.join(dist, 'assets', '*.js')):
+        try:
+            if 'window.electron.qishuiRequest' in open(f, encoding='utf-8').read():
+                remain += 1
+        except Exception:
+            pass
+    print('  仍含 electron.qishuiRequest 的文件数:', remain)
+    if total_changed < 2:
+        print('WARN: 补丁未完全命中')
         sys.exit(1)
 
 if __name__ == '__main__':
