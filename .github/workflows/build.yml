@@ -21,8 +21,14 @@ jobs:
 
       - name: Build Folia web (dist)
         run: |
-          git clone --depth 1 https://github.com/chthollyphile/folia-major.git folia
-          cd folia
+          # 锁定到发光效果正常的版本（上游 PR #900 把多层 textShadow 改成单层，
+          # 导致 iOS 上发光变成长方形）
+          PIN=658a8bb2616e
+          git init folia && cd folia
+          git remote add origin https://github.com/chthollyphile/folia-major.git
+          git fetch --depth 1 origin $PIN
+          git checkout FETCH_HEAD
+          echo "checked out: $(git rev-parse --short HEAD)"
           npm ci || npm install
           npm run build
           test -d dist || { echo "dist not found"; ls; exit 1; }
