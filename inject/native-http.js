@@ -26,7 +26,6 @@
     init = init || {};
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     var method = (init.method || (input && input.method) || 'GET').toUpperCase();
-    // 同源、非 http(s)、或明确不走原生时，交给浏览器
     if (!/^https?:\/\//i.test(url) || sameOrigin(url)) return origFetch(input, init);
 
     var body = init.body;
@@ -45,15 +44,37 @@
         connectTimeout: 30000,
         readTimeout: 30000
       });
+
+      // 关键：set-cookie 在浏览器里是 forbidden header，Headers 里读不到。
+      // 这里把它单独暴露到 window.__lastSetCookie，供业务代码读取。
+      var rawHeaders = res.headers || {};
+      var setCookies = [];
+      Object.keys(rawHeaders).forEach(function (k) {
+        if (String(k).toLowerCase() === 'set-cookie') {
+          var v = rawHeaders[k];
+          if (Array.isArray(v)) setCookies = setCookies.concat(v);
+          else if (typeof v === 'string') setCookies.push(v);
+        }
+      });
+      if (setCookies.length) {
+        window.__lastSetCookie = setCookies;
+        try {
+          window.dispatchEvent(new CustomEvent('capacitor:setcookie', { detail: setCookies }));
+        } catch (e) {}
+      }
+
       var payload = res.data;
       if (typeof payload !== 'string') payload = JSON.stringify(payload);
       var headers = new Headers();
-      if (res.headers) Object.keys(res.headers).forEach(function (k) { headers.set(k, res.headers[k]); });
+      Object.keys(rawHeaders).forEach(function (k) {
+        if (String(k).toLowerCase() === 'set-cookie') return;   // 跳过，避免 Headers 报错
+        try { headers.set(k, rawHeaders[k]); } catch (e) {}
+      });
       return new Response(payload, { status: res.status || 200, statusText: '', headers: headers });
     } catch (e) {
       console.warn('[native-http] 原生请求失败，回退:', url, e && e.message);
       return origFetch(input, init);
     }
   };
-  console.log('[native-http] 已接管跨域 fetch');
+  console.log('[native-http] 已接管跨域 fetch（set-cookie 通过 __lastSetCookie 暴露）');
 })();
