@@ -78,37 +78,29 @@ def main(dist):
 
     print(f'总命中文件 {len(hits)} 个，总改动 {total_changed} 处')
 
-    # 3) 网易云 API base：指向外部服务（WebView 里没有 Node，必须外部提供）
-    NET_BASE = os.environ.get('FOLIA_NETEASE_API', 'http://192.168.0.65:3001')
+    # 3) 网易云：把请求函数改走前端直连模块 window.__neteaseDirect
     net_changed = 0
     for p2 in glob.glob(os.path.join(dist, 'assets', '*.js')):
         try:
             t = open(p2, encoding='utf-8').read()
         except Exception:
             continue
-        if 'VITE_NETEASE_API_BASE' not in t:
+        if 'Failed to access environment variables for API base' not in t:
             continue
-        old_fn = ("Dt=()=>{let e={BASE_URL:`/`,DEV:!1,MODE:`production`,PROD:!0,SSR:!1};"
-                  "return e&&typeof e.VITE_NETEASE_API_BASE==`string`&&e.VITE_NETEASE_API_BASE?"
-                  "e.VITE_NETEASE_API_BASE:typeof process<`u`&&typeof{}.VITE_NETEASE_API_BASE==`string`&&"
-                  "{}.VITE_NETEASE_API_BASE?{}.VITE_NETEASE_API_BASE:null}")
-        if old_fn in t:
-            t = t.replace(old_fn, "Dt=()=>`%s`" % NET_BASE, 1)
+        marker = 'C=async(e,t={},n)=>{'
+        if marker in t and 'window.__neteaseDirect' not in t:
+            direct = (
+                marker
+                + 'if(typeof window<`u`&&typeof window.__neteaseDirect==`function`){'
+                + 'let _u=e.split(`?`)[0],_qs=e.includes(`?`)?e.split(`?`)[1]:``,_q={};'
+                + 'if(_qs)try{new URLSearchParams(_qs).forEach((v,k)=>{if(k!==`timestamp`&&k!==`cookie`)_q[k]=v})}catch(_e){}'
+                + 'return await window.__neteaseDirect(_u,_q)}'
+            )
+            t = t.replace(marker, direct, 1)
             open(p2, 'w', encoding='utf-8').write(t)
             net_changed += 1
-            print('  patched netease base ->', NET_BASE, 'in', os.path.basename(p2))
-        else:
-            # 兜底：只替换最后那个 null 返回
-            import re as _re
-            pat = _re.compile(r"VITE_NETEASE_API_BASE==`string`&&\{\}\.VITE_NETEASE_API_BASE\?"
-                              r"\{\}\.VITE_NETEASE_API_BASE:null")
-            if pat.search(t):
-                t = pat.sub("VITE_NETEASE_API_BASE==`string`&&{}.VITE_NETEASE_API_BASE?"
-                            "{}.VITE_NETEASE_API_BASE:`%s`" % NET_BASE, t, count=1)
-                open(p2, 'w', encoding='utf-8').write(t)
-                net_changed += 1
-                print('  patched netease base (fallback) ->', NET_BASE)
-    print('  网易云 base 改动文件数:', net_changed)
+            print('  patched netease -> direct in', os.path.basename(p2))
+    print('  网易云直连改动文件数:', net_changed)
 
     # 自检
     remain = 0
@@ -122,6 +114,8 @@ def main(dist):
     if total_changed < 2 and net_changed == 0:
         print('ERROR: 补丁完全没命中')
         sys.exit(1)
+    if net_changed == 0:
+        print('WARN: 网易云直连未注入（可能已注入或上游结构变了）')
     if total_changed < 2:
         print('NOTE: 汽水补丁 0 处（可能已补过），网易云 base 已注入')
 
