@@ -78,10 +78,12 @@ jobs:
       - name: Add custom HTTP plugin (bypass set-cookie filtering)
         run: |
           cd shell
-          cp ../inject/FoliaHttpPlugin.swift ios/App/App/FoliaHttpPlugin.swift
-          ls -l ios/App/App/FoliaHttpPlugin.swift
+          # 直接把插件类追加到 AppDelegate.swift 末尾（新文件不在 Xcode 工程里，编译不到）
+          printf '\n\n' >> ios/App/App/AppDelegate.swift
+          # 去掉 import 行（追加到文件中间，import 必须放在文件顶部）
+          grep -v '^import ' ../inject/FoliaHttpPlugin.swift >> ios/App/App/AppDelegate.swift
           python3 ../inject/patch-appdelegate-plugin.py ios/App/App
-          grep -n "FoliaHttpPlugin" ios/App/App/AppDelegate.swift | head -3
+          grep -c "FoliaHttpPlugin" ios/App/App/AppDelegate.swift
 
       - name: Inject Capacitor runtime into web bundle
         run: |
