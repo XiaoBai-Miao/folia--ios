@@ -80,30 +80,8 @@ jobs:
           cd shell
           cp ../inject/FoliaHttpPlugin.swift ios/App/App/FoliaHttpPlugin.swift
           ls -l ios/App/App/FoliaHttpPlugin.swift
-          # 在 AppDelegate 里注册插件
-          python3 - <<'PY'
-          p = 'ios/App/App/AppDelegate.swift'
-          s = open(p, encoding='utf-8').read()
-          if 'FoliaHttpPlugin' not in s:
-              marker = 'func application(_ application: UIApplication, didFinishLaunchingWithOptions'
-              idx = s.find(marker)
-              brace = s.find('{', idx)
-              inject = '''
-        // 注册自定义 HTTP 插件（延迟，等 bridge 建好）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if let bridge = self.window?.rootViewController as? CAPBridgeViewController {
-                bridge.bridge?.registerPluginInstance(FoliaHttpPlugin())
-                print("[Folia] FoliaHttpPlugin registered")
-            } else {
-                print("[Folia] bridge not ready for FoliaHttpPlugin")
-            }
-        }
-'''
-              s = s[:brace+1] + inject + s[brace+1:]
-              open(p, 'w', encoding='utf-8').write(s)
-              print('AppDelegate patched')
-          print('FoliaHttpPlugin in file:', 'FoliaHttpPlugin' in open(p, encoding='utf-8').read())
-          PY
+          python3 ../inject/patch-appdelegate-plugin.py ios/App/App
+          grep -n "FoliaHttpPlugin" ios/App/App/AppDelegate.swift | head -3
 
       - name: Inject Capacitor runtime into web bundle
         run: |
