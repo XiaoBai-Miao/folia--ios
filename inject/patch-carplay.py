@@ -18,7 +18,8 @@ import uuid
 import plistlib
 
 APP_DIR = sys.argv[1] if len(sys.argv) > 1 else 'ios/App/App'
-PBX = os.path.join(APP_DIR, 'App.xcodeproj', 'project.pbxproj')
+IOS_APP_ROOT = os.path.dirname(APP_DIR)  # Capacitor 工程根：ios/App
+PBX = os.path.join(IOS_APP_ROOT, 'App.xcodeproj', 'project.pbxproj')
 INFO = os.path.join(APP_DIR, 'Info.plist')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, 'CarPlaySceneDelegate.swift')
