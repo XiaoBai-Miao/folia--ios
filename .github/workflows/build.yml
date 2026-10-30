@@ -134,10 +134,6 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" "$P" 2>/dev/null || true
 
-      - name: Inject CarPlay scene experiment
-        run: |
-          cd shell
-          python3 ../inject/patch-carplay.py ios/App/App
 
       - name: Archive (unsigned)
         run: |
@@ -157,7 +153,7 @@ jobs:
           rm -rf Payload && mkdir Payload
           cp -R build/App.xcarchive/Products/Applications/App.app Payload/Folia.app
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" Payload/Folia.app/Info.plist
-          cp shell/ios/App/App/CarPlay.entitlements ./CarPlay.entitlements && ldid -S./CarPlay.entitlements Payload/Folia.app/App
+          ldid -S Payload/Folia.app/App
           zip -qry folia-ios-direct.ipa Payload
           ls -lh folia-ios-direct.ipa
 
