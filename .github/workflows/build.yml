@@ -134,6 +134,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$P" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" "$P" 2>/dev/null || true
 
+      - name: Inject CarPlay scene experiment
+        run: |
+          cd shell
+          python3 ../inject/patch-carplay.py ios/App/App
+
       - name: Archive (unsigned)
         run: |
           cd shell/ios/App
@@ -152,7 +157,7 @@ jobs:
           rm -rf Payload && mkdir Payload
           cp -R build/App.xcarchive/Products/Applications/App.app Payload/Folia.app
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" Payload/Folia.app/Info.plist
-          ldid -S Payload/Folia.app/App
+          ldid -S shell/ios/App/App/CarPlay.entitlements Payload/Folia.app/App
           zip -qry folia-ios-direct.ipa Payload
           ls -lh folia-ios-direct.ipa
 
@@ -170,3 +175,5 @@ jobs:
           gh release create "$VER" folia-ios-direct.ipa \
             --title "Folia iOS Direct $VER" \
             --notes "汽水直连版（WebCrypto + CapacitorHttp），无需中转服务器。" || true
+
+
