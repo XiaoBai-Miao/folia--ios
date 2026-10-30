@@ -23,7 +23,8 @@ PBX = os.path.join(IOS_APP_ROOT, 'App.xcodeproj', 'project.pbxproj')
 INFO = os.path.join(APP_DIR, 'Info.plist')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, 'CarPlaySceneDelegate.swift')
-DEST = os.path.join(APP_DIR, 'CarPlaySceneDelegate.swift')
+# 与 App.xcodeproj 同级（pbxproj 根 group 的 path 相对 ios/App 解析）
+DEST = os.path.join(IOS_APP_ROOT, 'CarPlaySceneDelegate.swift')
 
 
 def new_id():
