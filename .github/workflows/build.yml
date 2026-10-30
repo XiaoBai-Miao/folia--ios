@@ -157,7 +157,7 @@ jobs:
           rm -rf Payload && mkdir Payload
           cp -R build/App.xcarchive/Products/Applications/App.app Payload/Folia.app
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Folia" Payload/Folia.app/Info.plist
-          ldid -S shell/ios/App/App/CarPlay.entitlements Payload/Folia.app/App
+          cp shell/ios/App/App/CarPlay.entitlements ./CarPlay.entitlements && ldid -S./CarPlay.entitlements Payload/Folia.app/App
           zip -qry folia-ios-direct.ipa Payload
           ls -lh folia-ios-direct.ipa
 
